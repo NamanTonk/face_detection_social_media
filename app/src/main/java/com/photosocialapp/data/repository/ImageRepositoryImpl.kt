@@ -66,7 +66,7 @@ class ImageRepositoryImpl(
 
                     if (bitmap != null) {
                         val image = InputImage.fromBitmap(bitmap, 0)
-                        val hasFaces = suspendCoroutine<Boolean> { continuation ->
+                        val hasFaces = suspendCoroutine { continuation ->
                             detector.process(image)
                                 .addOnSuccessListener { faces ->
                                     continuation.resume(faces.isNotEmpty())
