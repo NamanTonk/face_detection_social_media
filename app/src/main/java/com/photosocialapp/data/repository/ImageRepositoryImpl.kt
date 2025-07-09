@@ -6,18 +6,21 @@ import android.provider.MediaStore
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.face.FaceDetection
 import com.google.mlkit.vision.face.FaceDetectorOptions
+import com.photosocialapp.data.local.AppDatabase
+import com.photosocialapp.data.local.entity.DetectedImageEntity
 import com.photosocialapp.domain.model.ImageModel
 import com.photosocialapp.domain.repository.ImageRepository
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.*
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
 
 class ImageRepositoryImpl(
     private val context: Context
 ) : ImageRepository {
+    private val database = AppDatabase.getInstance(context)
+    private val detectedImageDao = database.detectedImageDao()
+
     override fun getImagesWithFaces(): Flow<List<ImageModel>> = flow {
         val imageList = mutableListOf<ImageModel>()
         val projection = arrayOf(
@@ -27,7 +30,12 @@ class ImageRepositoryImpl(
 
         val sortOrder = "${MediaStore.Images.Media.DATE_ADDED} DESC"
         val query = context.contentResolver.query(
-            MediaStore.Images.Media.EXTERNAL_CONTENT_URI, projection, null, null, sortOrder)
+            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+            projection,
+            null,
+            null,
+            sortOrder
+        )
 
         val options = FaceDetectorOptions.Builder()
             .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST)
@@ -42,14 +50,23 @@ class ImageRepositoryImpl(
                     MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
                     id
                 )
+
                 try {
+                    // Check if image is already in cache
+                    if (detectedImageDao.isImageDetected(uri.toString())) {
+                        imageList.add(ImageModel(uri.toString()))
+                        emit(imageList.toList())
+                        continue
+                    }
+
+                    // If not in cache, process with ML Kit
                     val inputStream = context.contentResolver.openInputStream(uri)
                     val bitmap = BitmapFactory.decodeStream(inputStream)
                     inputStream?.close()
 
                     if (bitmap != null) {
                         val image = InputImage.fromBitmap(bitmap, 0)
-                        val hasFaces = suspendCoroutine { continuation ->
+                        val hasFaces = suspendCoroutine<Boolean> { continuation ->
                             detector.process(image)
                                 .addOnSuccessListener { faces ->
                                     continuation.resume(faces.isNotEmpty())
@@ -60,6 +77,8 @@ class ImageRepositoryImpl(
                         }
 
                         if (hasFaces) {
+                            // Cache the result
+                            detectedImageDao.insertDetectedImage(DetectedImageEntity(uri.toString()))
                             imageList.add(ImageModel(uri.toString()))
                             emit(imageList.toList())
                         }
@@ -71,4 +90,5 @@ class ImageRepositoryImpl(
                 }
             }
         }
-    }.flowOn(Dispatchers.IO)}
+    }.flowOn(Dispatchers.IO)
+}
