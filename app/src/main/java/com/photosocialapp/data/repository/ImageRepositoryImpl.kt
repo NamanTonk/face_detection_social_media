@@ -32,4 +32,7 @@ class ImageRepositoryImpl(
             }
         }
     }.flowOn(Dispatchers.IO)
+
+    override  fun syncImagesWithFaceDetection() =   flow { emit(faceCheckUseCase.syncLocalDBImages()) }
 }
+

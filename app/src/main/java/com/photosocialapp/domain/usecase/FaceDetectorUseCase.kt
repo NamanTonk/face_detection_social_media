@@ -13,10 +13,10 @@ import com.photosocialapp.data.local.entity.DetectedImageEntity
 import com.photosocialapp.domain.model.ImageModel
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
+import androidx.core.net.toUri
 
 class FaceDetectorUseCase(private val context: Context, private val detectedImageDao: DetectedImageDao) {
     // Initialize ML Kit face detector with fast performance mode
-
 
     /**
      * Processes a single image: checks cache or performs face detection
@@ -91,5 +91,24 @@ class FaceDetectorUseCase(private val context: Context, private val detectedImag
             }
     }
 
-
+    /**
+     * Processes all images that haven't been checked for faces yet (hadFace = false)
+     * @return List of ImageModel for images where faces were found
+     */
+    suspend fun syncLocalDBImages(): List<ImageModel> {
+        val imagesWithFaces = mutableListOf<ImageModel>()
+        val unprocessedImages = detectedImageDao.getUnprocessedImages()
+        Log.d("Update", "Unprocessed images: $unprocessedImages")
+        unprocessedImages.forEach { entity ->
+            val uri = entity.uri.toUri()
+            val hasFaces = hasFaceAvailableInImage(uri)
+            // If faces were found, add to the result list
+            // Update the database with the new face detection result
+            detectedImageDao.insertDetectedImage(entity.copy(hadFace = hasFaces))
+            if (hasFaces) {
+                imagesWithFaces.add(ImageModel(entity.uri))
+            }
+        }
+        return imagesWithFaces
+    }
 }

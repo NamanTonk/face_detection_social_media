@@ -32,17 +32,29 @@ class ImageViewModel(
                 )
             }
             .catch { error ->
+                // Consider logging the error
                 _uiState.value = ImagesUiState(isLoading = false)
             }
             .launchIn(viewModelScope)
     }
 
     fun syncImage() {
-        getImagesWithFacesUseCase.syncImage().onEach {image->
-            _uiState.value = ImagesUiState(
-                images = image,
-                isLoading = false
-            )
-        }.catch {  _uiState.value = ImagesUiState(isLoading = false) }.launchIn(viewModelScope)
+        getImagesWithFacesUseCase.syncLocalImages()
+            .onStart {
+                // Optionally set loading state for sync operation
+                _uiState.update { it.copy(isLoading = true) }
+            }.onEach { newImages ->
+                _uiState.update { currentState ->
+                    val updatedImages = (currentState.images + newImages).distinctBy { it.uri }
+                    currentState.copy(
+                        images = updatedImages,
+                        isLoading = false
+                    )
+                }
+            }
+            .catch { error ->
+                // Consider logging the error
+                _uiState.update { it.copy(isLoading = false) }
+            }.launchIn(viewModelScope)
     }
 }

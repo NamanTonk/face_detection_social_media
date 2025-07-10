@@ -17,4 +17,7 @@ interface DetectedImageDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertDetectedImage(image: DetectedImageEntity)
+
+    @Query("SELECT * FROM detected_images WHERE hadFace = 0")
+    suspend fun getUnprocessedImages(): List<DetectedImageEntity>
 }
