@@ -8,4 +8,6 @@ class GetImagesWithFacesUseCase(
     private val repository: ImageRepository
 ) {
     operator fun invoke(): Flow<List<ImageModel>> = repository.getImagesWithFaces()
+
+    fun syncImage(): Flow<List<ImageModel>> = repository.getImagesWithFaces()
 }

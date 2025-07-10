@@ -16,11 +16,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             PhotoSocialAppTheme {
-                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    ListScreen(
-                        modifier = Modifier.padding(innerPadding)
-                    )
-                }
+                    ListScreen()
             }
         }
     }

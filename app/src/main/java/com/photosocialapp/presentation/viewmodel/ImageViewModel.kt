@@ -36,4 +36,13 @@ class ImageViewModel(
             }
             .launchIn(viewModelScope)
     }
+
+    fun syncImage() {
+        getImagesWithFacesUseCase.syncImage().onEach {image->
+            _uiState.value = ImagesUiState(
+                images = image,
+                isLoading = false
+            )
+        }.catch {  _uiState.value = ImagesUiState(isLoading = false) }.launchIn(viewModelScope)
+    }
 }
