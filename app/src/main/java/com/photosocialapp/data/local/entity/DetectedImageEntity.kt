@@ -7,5 +7,6 @@ import androidx.room.PrimaryKey
 data class DetectedImageEntity(
     @PrimaryKey
     val uri: String,
+    val hadFace: Boolean=false,
     val timestamp: Long = System.currentTimeMillis()
 )

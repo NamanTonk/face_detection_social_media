@@ -33,15 +33,7 @@ import com.photosocialapp.presentation.viewmodel.ImageViewModelFactory
 @Composable
 fun ListScreen(modifier: Modifier = Modifier) {
     val context = LocalContext.current
-
-    val viewModel: ImageViewModel = viewModel(
-        factory = ImageViewModelFactory(
-            GetImagesWithFacesUseCase(
-                ImageRepositoryImpl(context)
-            )
-        )
-    )
-
+    val viewModel: ImageViewModel = viewModel(factory = ImageViewModelFactory(GetImagesWithFacesUseCase(ImageRepositoryImpl(context))))
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
     Box(modifier = modifier.fillMaxSize()) {
