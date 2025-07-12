@@ -24,6 +24,8 @@ import java.nio.MappedByteBuffer
 import java.nio.channels.FileChannel
 import androidx.core.graphics.scale
 import com.photosocialapp.data.local.entity.Converters
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -152,8 +154,8 @@ class FaceDetectorUseCase(
         }
         processedImageCount++
         Log.d("FaceDetector", "Total unique faces: ${allFaceEmbeddings.size}")
-         if (processedImageCount >= 3) {
-            val clusters = performClustering()
+         if (processedImageCount >= 1) {
+             val clusters = performClustering()
             // Save clusters to database
              runBlocking {
                  saveClustersToDatabase(clusters)
@@ -233,7 +235,7 @@ class FaceDetectorUseCase(
         }
 
         // For each cluster, find the face closest to the centroid
-        return finalClusters.mapValues { (clusterId, faceList) ->
+        val bitmaps =  finalClusters.mapValues { (clusterId, faceList) ->
             if (faceList.isEmpty()) emptyList()
             else {
                 val centroid = centroids[clusterId] ?: return@mapValues emptyList()
@@ -245,14 +247,11 @@ class FaceDetectorUseCase(
                 listOf(closestFace!!.second)
             }
         }.filterValues { it.isNotEmpty() }
-    }
-
-    fun getClusteredFaces(): Map<Int, List<Bitmap>> {
-        return if (allFaceEmbeddings.size >= 3) {
-            performClustering()
-        } else {
-            emptyMap()
+        val filterMap = mutableMapOf<Int, List<Bitmap>>()
+        bitmaps.forEach { (key, value) ->
+            filterMap[key] = value.toSet().toList()
         }
+        return filterMap
     }
 
     /**
