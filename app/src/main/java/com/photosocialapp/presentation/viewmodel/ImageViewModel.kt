@@ -1,6 +1,7 @@
 package com.photosocialapp.presentation.viewmodel
 
 import android.content.res.AssetManager
+import android.graphics.Bitmap
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.photosocialapp.domain.model.ImageModel
@@ -22,8 +23,13 @@ class ImageViewModel(
     private val _uiState = MutableStateFlow(ImagesUiState(isLoading = true))
     val uiState: StateFlow<ImagesUiState> = _uiState.asStateFlow()
 
+    private val _faceCategoris = MutableStateFlow<Set<Bitmap>>(emptySet())
+    val faceCategoris: StateFlow<Set<Bitmap>> = _faceCategoris.asStateFlow()
+
      fun loadImages() {
-        getImagesWithFacesUseCase()
+        getImagesWithFacesUseCase(faceCategory = {faceCategoris->
+            _faceCategoris.update {faceCategoris  }
+        })
             .onStart { _uiState.value = ImagesUiState(isLoading = true) }
             .onEach { images ->
                 _uiState.value = ImagesUiState(

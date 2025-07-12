@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
 import androidx.compose.foundation.lazy.staggeredgrid.itemsIndexed
@@ -52,6 +53,11 @@ import com.photosocialapp.domain.usecase.GetImagesWithFacesUseCase
 import com.photosocialapp.domain.usecase.ImageFetchFromGallery
 import com.photosocialapp.presentation.viewmodel.ImageViewModel
 import com.photosocialapp.presentation.viewmodel.ImageViewModelFactory
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.lazy.items
+import androidx.compose.ui.draw.clip
 
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalPermissionsApi::class)
@@ -116,38 +122,62 @@ fun ListScreen() {
 
 
 @Composable
-private fun ImageGridContent(modifier: Modifier = Modifier,viewModel: ImageViewModel) {
+private fun ImageGridContent(modifier: Modifier = Modifier, viewModel: ImageViewModel) {
     val context = LocalContext.current
-
-
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val faceCategory by viewModel.faceCategoris.collectAsStateWithLifecycle()
 
-    Box(modifier = modifier.fillMaxSize()) {
-        if (uiState.isLoading) {
-            CircularProgressIndicator(
-                modifier = Modifier.align(Alignment.Center)
-            )
-        } else {
-            LazyVerticalStaggeredGrid(
-                columns = StaggeredGridCells.Fixed(3),
-                verticalItemSpacing = 4.dp,
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                modifier = Modifier.fillMaxSize()
-            ) {
-                itemsIndexed(uiState.images) { index, image ->
-                    AsyncImage(
-                        model = ImageRequest.Builder(context)
-                            .data(image.uri)
-                            .crossfade(true)
-                            .memoryCachePolicy(CachePolicy.ENABLED)
-                            .diskCachePolicy(CachePolicy.ENABLED)
-                            .build(),
-                        contentDescription = null,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(if (index % 2 == 0) (200..300).random().dp else (100..180).random().dp),
-                        contentScale = ContentScale.Crop
-                    )
+    Column(modifier = modifier.fillMaxSize()) {
+        // Horizontal scrollable list
+       if(faceCategory.isNotEmpty())
+        LazyRow(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(140.dp)
+                .padding(vertical = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            contentPadding = PaddingValues(horizontal = 16.dp)
+        ) {
+            items(faceCategory.toList()) { image ->
+                AsyncImage(
+                    model = image,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .size(120.dp)
+                        .clip(CircleShape),
+                    contentScale = ContentScale.Crop
+                )
+            }
+        }
+
+        // Existing grid content
+        Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
+            if (uiState.isLoading) {
+                CircularProgressIndicator(
+                    modifier = Modifier.align(Alignment.Center)
+                )
+            } else {
+                LazyVerticalStaggeredGrid(
+                    columns = StaggeredGridCells.Fixed(3),
+                    verticalItemSpacing = 4.dp,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    itemsIndexed(uiState.images) { index, image ->
+                        AsyncImage(
+                            model = ImageRequest.Builder(context)
+                                .data(image.uri)
+                                .crossfade(true)
+                                .memoryCachePolicy(CachePolicy.ENABLED)
+                                .diskCachePolicy(CachePolicy.ENABLED)
+                                .build(),
+                            contentDescription = null,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(if (index % 2 == 0) (200..300).random().dp else (100..180).random().dp),
+                            contentScale = ContentScale.Crop
+                        )
+                    }
                 }
             }
         }

@@ -32,7 +32,7 @@ class FaceDetectorUseCase(private val context: Context, private val detectedImag
      * Returns updated image list if a face is found
      */
     private var interpreter: Interpreter?=null
-     suspend operator fun invoke(uri: Uri, imageList: MutableList<ImageModel>): List<ImageModel>? {
+     suspend operator fun invoke(uri: Uri, imageList: MutableList<ImageModel>,faceCategories : (Set<Bitmap>)-> Unit): List<ImageModel>? {
         return try {
             // TF_LiteModel Load
             interpreter =  Interpreter(getFaceNetByteBuffer(context.assets, "facenet.tflite"))
@@ -47,7 +47,7 @@ class FaceDetectorUseCase(private val context: Context, private val detectedImag
 
             // Process new image if not in cache
             Log.d("ImageRepository", "Processing START WITH: $uri")
-            val hasFaces = hasFaceAvailableInImage(uri)
+            val hasFaces = hasFaceAvailableInImage(uri,faceCategories)
             Log.d("HasFace", "$uri ====: $hasFaces")
 
             // Cache result and return updated list if faces found
@@ -72,12 +72,12 @@ class FaceDetectorUseCase(private val context: Context, private val detectedImag
      * Loads bitmap from URI and performs face detection
      * Returns true if faces are found in the image
      */
-    private  suspend  fun hasFaceAvailableInImage(uri: Uri): Boolean {
+    private  suspend  fun hasFaceAvailableInImage(uri: Uri,faceCategories : (Set<Bitmap>)-> Unit): Boolean {
         return try {
             context.contentResolver.openInputStream(uri)?.use { inputStream ->
                 val bitmap = BitmapFactory.decodeStream(inputStream)
                 if (bitmap != null) {
-                    val hasFaces = detectFacesInBitmap(bitmap)
+                    val hasFaces = detectFacesInBitmap(bitmap,faceCategories)
                     bitmap.recycle()
                     hasFaces
                 } else false
@@ -91,15 +91,19 @@ class FaceDetectorUseCase(private val context: Context, private val detectedImag
      * Uses ML Kit to detect faces in a bitmap
      * Returns true if any faces are detected
      */
-    val allFaceEmbeddings = mutableListOf<FloatArray>()
-    val faceData = mutableMapOf<FloatArray, Bitmap>() // Optional: to link embedding back to a face image
-    var processedImageCount = 0
+    private val allFaceEmbeddings = mutableListOf<FloatArray>()
+    private val faceData = mutableMapOf<FloatArray, Bitmap>()
+    private var processedImageCount = 0
+    private val NUM_CLUSTERS = 5
+    private val MAX_ITERATIONS = 100
+    private val clusters = mutableMapOf<Int, MutableList<FloatArray>>()
+    private val clusterResults = mutableMapOf<Int, MutableList<Bitmap>>()
 
-    private suspend fun detectFacesInBitmap(bitmap: Bitmap): Boolean = suspendCoroutine { continuation ->
+    private suspend fun detectFacesInBitmap(bitmap: Bitmap,faceCategories : (Set<Bitmap>)-> Unit): Boolean = suspendCoroutine { continuation ->
         val image = InputImage.fromBitmap(bitmap, 0)
         detector.process(image)
             .addOnSuccessListener { faces: List<Face> ->
-                if(faces.isNotEmpty()) getFaceEmbedding(bitmap,faces)
+                if(faces.isNotEmpty())faceCategories.invoke(getFaceEmbedding(bitmap,faces))
                 continuation.resume(faces.isNotEmpty())
             }
             .addOnFailureListener { e ->
@@ -108,33 +112,139 @@ class FaceDetectorUseCase(private val context: Context, private val detectedImag
             }
     }
 
-    private  fun getFaceEmbedding(bitmap:Bitmap, faces: List<Face>) {
-        for(face in faces){
+    private fun getFaceEmbedding(bitmap: Bitmap, faces: List<Face>): Set<Bitmap> {
+        // Process new faces
+        for(face in faces) {
             val boundingBox = face.boundingBox
-            val croppedFace =  Bitmap.createBitmap(bitmap, boundingBox.left, boundingBox.top, boundingBox.width(), boundingBox.height())
+            val croppedFace = Bitmap.createBitmap(bitmap, boundingBox.left, boundingBox.top, boundingBox.width(), boundingBox.height())
             val resizedFace = croppedFace.scale(160, 160)
             val inputBuffer = bitmapToByteBuffer(resizedFace)
             val outputBuffer = Array(1) { FloatArray(128) }
-             interpreter?.run(inputBuffer,outputBuffer)
+            interpreter?.run(inputBuffer, outputBuffer)
             val embedding = outputBuffer[0]
-            allFaceEmbeddings.add(embedding)
-            faceData[embedding] = croppedFace
+
+            // Check if this face is significantly different from existing ones
+            if (isNewFace(embedding)) {
+                allFaceEmbeddings.add(embedding)
+                faceData[embedding] = resizedFace
+            }
         }
+
         processedImageCount++
-        println("Embadding Genrating.... ${allFaceEmbeddings.size}")
+        Log.d("FaceDetector", "Total unique faces: ${allFaceEmbeddings.size}")
+
+        return if (processedImageCount >= 3) {
+            performClustering().values.flatten().toSet()
+        } else {
+            emptySet()
+        }
+    }
+
+    private fun isNewFace(newEmbedding: FloatArray, similarityThreshold: Double = 0.6): Boolean {
+        if (allFaceEmbeddings.isEmpty()) return true
+
+        for (existing in allFaceEmbeddings) {
+            val similarity = calculateCosineSimilarity(newEmbedding, existing)
+            if (similarity > similarityThreshold) {
+                return false // Face is too similar to an existing one
+            }
+        }
+        return true
+    }
+
+    private fun calculateCosineSimilarity(a: FloatArray, b: FloatArray): Double {
+        var dotProduct = 0.0
+        var normA = 0.0
+        var normB = 0.0
+
+        for (i in a.indices) {
+            dotProduct += (a[i] * b[i])
+            normA += (a[i] * a[i])
+            normB += (b[i] * b[i])
+        }
+
+        return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB))
+    }
+
+    private fun performClustering(): Map<Int, List<Bitmap>> {
+        if (allFaceEmbeddings.isEmpty()) return emptyMap()
+
+        // Initialize clusters with random centroids
+        val centroids = allFaceEmbeddings.shuffled().take(NUM_CLUSTERS).map { it.clone() }.toMutableList()
+
+        var iteration = 0
+        var changed = true
+        val finalClusters = mutableMapOf<Int, MutableList<Pair<FloatArray, Bitmap>>>()
+
+        while (changed && iteration < MAX_ITERATIONS) {
+            changed = false
+            clusters.clear()
+            finalClusters.clear()
+
+            // Initialize empty clusters
+            for (i in 0 until NUM_CLUSTERS) {
+                clusters[i] = mutableListOf()
+                finalClusters[i] = mutableListOf()
+            }
+
+            // Assign points to nearest centroid
+            for (embedding in allFaceEmbeddings) {
+                val nearestCentroid = findNearestCentroid(embedding, centroids)
+                clusters[nearestCentroid]?.add(embedding)
+                faceData[embedding]?.let { faceBitmap ->
+                    finalClusters[nearestCentroid]?.add(embedding to faceBitmap)
+                }
+            }
+
+            // Update centroids
+            for (i in 0 until NUM_CLUSTERS) {
+                val cluster = clusters[i] ?: continue
+                if (cluster.isEmpty()) continue
+
+                val newCentroid = calculateNewCentroid(cluster)
+                if (!centroids[i].contentEquals(newCentroid)) {
+                    centroids[i] = newCentroid
+                    changed = true
+                }
+            }
+
+            iteration++
+        }
+
+        // For each cluster, find the face closest to the centroid
+        return finalClusters.mapValues { (clusterId, faceList) ->
+            if (faceList.isEmpty()) emptyList()
+            else {
+                val centroid = centroids[clusterId] ?: return@mapValues emptyList()
+                // Find the face embedding closest to the centroid
+                val closestFace = faceList.minByOrNull { (embedding, _) ->
+                    calculateEuclideanDistance(embedding, centroid)
+                }
+                // Return only the most representative face bitmap
+                listOf(closestFace!!.second)
+            }
+        }.filterValues { it.isNotEmpty() }
+    }
+
+    fun getClusteredFaces(): Map<Int, List<Bitmap>> {
+        return if (allFaceEmbeddings.size >= 3) {
+            performClustering()
+        } else {
+            emptyMap()
+        }
     }
 
     /**
      * Processes all images that haven't been checked for faces yet (hadFace = false)
      * @return List of ImageModel for images where faces were found
      */
-    suspend fun syncLocalDBImages(): List<ImageModel> {
+    suspend fun syncLocalDBImages(faceCategories : (Set<Bitmap>)-> Unit): List<ImageModel> {
         val imagesWithFaces = mutableListOf<ImageModel>()
         val unprocessedImages = detectedImageDao.getUnprocessedImages()
         Log.d("Update", "Unprocessed images: $unprocessedImages")
         unprocessedImages.forEach { entity ->
             val uri = entity.uri.toUri()
-            val hasFaces = hasFaceAvailableInImage(uri)
+            val hasFaces = hasFaceAvailableInImage(uri,faceCategories)
             // If faces were found, add to the result list
             // Update the database with the new face detection result
             detectedImageDao.insertDetectedImage(entity.copy(hadFace = hasFaces))
@@ -179,6 +289,43 @@ class FaceDetectorUseCase(private val context: Context, private val detectedImag
             }
         }
         return byteBuffer
+    }
+
+    private fun findNearestCentroid(embedding: FloatArray, centroids: List<FloatArray>): Int {
+        var nearestIndex = -1
+        var minDistance = Double.MAX_VALUE
+
+        for (i in centroids.indices) {
+            val distance = calculateEuclideanDistance(embedding, centroids[i])
+            if (distance < minDistance) {
+                minDistance = distance
+                nearestIndex = i
+            }
+        }
+
+        return nearestIndex
+    }
+
+    private fun calculateEuclideanDistance(embedding1: FloatArray, embedding2: FloatArray): Double {
+        var sum = 0.0
+        for (i in embedding1.indices) {
+            val diff = embedding1[i] - embedding2[i]
+            sum += diff * diff
+        }
+        return Math.sqrt(sum)
+    }
+
+    private fun calculateNewCentroid(cluster: List<FloatArray>): FloatArray {
+        val centroid = FloatArray(cluster[0].size)
+        for (embedding in cluster) {
+            for (i in embedding.indices) {
+                centroid[i] += embedding[i]
+            }
+        }
+        for (i in centroid.indices) {
+            centroid[i] /= cluster.size
+        }
+        return centroid
     }
 
 }
