@@ -25,7 +25,10 @@ class ImageRepositoryImpl(
         cursor?.use {
             val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
             while (cursor.moveToNext()) {
-              val uri =   ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, cursor.getLong(idColumn))
+                val uri = ContentUris.withAppendedId(
+                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                    cursor.getLong(idColumn)
+                )
                 faceCheckUseCase.invoke(uri, imageList)?.let { newList ->
                     emit(newList)
                 }
@@ -33,6 +36,6 @@ class ImageRepositoryImpl(
         }
     }.flowOn(Dispatchers.IO)
 
-    override  fun syncImagesWithFaceDetection() =   flow { emit(faceCheckUseCase.syncLocalDBImages()) }
+    override fun syncImagesWithFaceDetection() = flow { emit(faceCheckUseCase.syncLocalDBImages()) }
 }
 

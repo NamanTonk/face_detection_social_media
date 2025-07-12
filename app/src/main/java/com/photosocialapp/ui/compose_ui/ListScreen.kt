@@ -1,6 +1,7 @@
 package com.photosocialapp.ui.compose_ui
 
 import android.Manifest
+import android.content.res.AssetManager
 import android.os.Build
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -24,6 +25,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -56,13 +58,6 @@ import com.photosocialapp.presentation.viewmodel.ImageViewModelFactory
 @Composable
 fun ListScreen() {
     val context = LocalContext.current
-    val viewModel: ImageViewModel = viewModel(
-        factory = ImageViewModelFactory(
-            GetImagesWithFacesUseCase(
-                ImageRepositoryImpl(ImageFetchFromGallery(context), FaceDetectorUseCase(context,AppDatabase.getInstance(context).detectedImageDao()))
-            )
-        )
-    )
     val permissionState = rememberPermissionState(
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             Manifest.permission.READ_MEDIA_IMAGES
@@ -70,9 +65,16 @@ fun ListScreen() {
             Manifest.permission.READ_EXTERNAL_STORAGE
         }
     )
-
+    val viewModel: ImageViewModel = viewModel(
+        factory = ImageViewModelFactory(
+            GetImagesWithFacesUseCase(
+                ImageRepositoryImpl(ImageFetchFromGallery(context), FaceDetectorUseCase(context,AppDatabase.getInstance(context).detectedImageDao()))
+            )
+        )
+    )
     when (permissionState.status) {
         is PermissionStatus.Granted -> {
+            LaunchedEffect(Unit) {viewModel.loadImages() }
             // Permission is granted, show the image grid
             Scaffold(topBar = {
                 TopAppBar(title = {Text("Faces Images")}, // Or your desired title
@@ -111,6 +113,7 @@ fun ListScreen() {
         }
     }
 }
+
 
 @Composable
 private fun ImageGridContent(modifier: Modifier = Modifier,viewModel: ImageViewModel) {
