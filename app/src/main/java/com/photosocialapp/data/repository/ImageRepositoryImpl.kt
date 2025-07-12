@@ -19,7 +19,7 @@ class ImageRepositoryImpl(
     private val faceCheckUseCase: FaceDetectorUseCase
 ) : ImageRepository {
 
-    override fun getImagesWithFaces(faceCategories: (Set<Bitmap>) -> Unit): Flow<List<ImageModel>> = flow {
+    override fun getImagesWithFaces(): Flow<List<ImageModel>> = flow {
         val imageList = mutableListOf<ImageModel>()
         // Query media store for all images
         val cursor = imageFetchFromGallery()
@@ -30,13 +30,13 @@ class ImageRepositoryImpl(
                     MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
                     cursor.getLong(idColumn)
                 )
-                faceCheckUseCase.invoke(uri, imageList, faceCategories = faceCategories)?.let { newList ->
+                faceCheckUseCase.invoke(uri, imageList)?.let { newList ->
                     emit(newList)
                 }
             }
         }
     }.flowOn(Dispatchers.IO)
 
-    override fun syncImagesWithFaceDetection() = flow { emit(faceCheckUseCase.syncLocalDBImages({})) }
+    override fun syncImagesWithFaceDetection() = flow { emit(faceCheckUseCase.syncLocalDBImages()) }
 }
 

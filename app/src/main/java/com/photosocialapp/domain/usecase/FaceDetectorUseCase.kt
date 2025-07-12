@@ -10,7 +10,9 @@ import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.face.FaceDetection
 import com.google.mlkit.vision.face.FaceDetectorOptions
 import com.photosocialapp.data.local.dao.DetectedImageDao
+import com.photosocialapp.data.local.dao.FaceClusterDao
 import com.photosocialapp.data.local.entity.DetectedImageEntity
+import com.photosocialapp.data.local.entity.FaceClusterEntity
 import com.photosocialapp.domain.model.ImageModel
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
@@ -21,10 +23,16 @@ import java.io.FileInputStream
 import java.nio.MappedByteBuffer
 import java.nio.channels.FileChannel
 import androidx.core.graphics.scale
+import com.photosocialapp.data.local.entity.Converters
+import kotlinx.coroutines.runBlocking
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
-class FaceDetectorUseCase(private val context: Context, private val detectedImageDao: DetectedImageDao) {
+class FaceDetectorUseCase(
+    private val context: Context,
+    private val detectedImageDao: DetectedImageDao,
+    private val faceClusterDao: FaceClusterDao
+) {
     // Initialize ML Kit face detector with fast performance mode
 
     /**
@@ -32,7 +40,7 @@ class FaceDetectorUseCase(private val context: Context, private val detectedImag
      * Returns updated image list if a face is found
      */
     private var interpreter: Interpreter?=null
-     suspend operator fun invoke(uri: Uri, imageList: MutableList<ImageModel>,faceCategories : (Set<Bitmap>)-> Unit): List<ImageModel>? {
+     suspend operator fun invoke(uri: Uri, imageList: MutableList<ImageModel>): List<ImageModel>? {
         return try {
             // TF_LiteModel Load
             interpreter =  Interpreter(getFaceNetByteBuffer(context.assets, "facenet.tflite"))
@@ -47,7 +55,7 @@ class FaceDetectorUseCase(private val context: Context, private val detectedImag
 
             // Process new image if not in cache
             Log.d("ImageRepository", "Processing START WITH: $uri")
-            val hasFaces = hasFaceAvailableInImage(uri,faceCategories)
+            val hasFaces = hasFaceAvailableInImage(uri)
             Log.d("HasFace", "$uri ====: $hasFaces")
 
             // Cache result and return updated list if faces found
@@ -72,12 +80,12 @@ class FaceDetectorUseCase(private val context: Context, private val detectedImag
      * Loads bitmap from URI and performs face detection
      * Returns true if faces are found in the image
      */
-    private  suspend  fun hasFaceAvailableInImage(uri: Uri,faceCategories : (Set<Bitmap>)-> Unit): Boolean {
+    private  suspend  fun hasFaceAvailableInImage(uri: Uri): Boolean {
         return try {
             context.contentResolver.openInputStream(uri)?.use { inputStream ->
                 val bitmap = BitmapFactory.decodeStream(inputStream)
                 if (bitmap != null) {
-                    val hasFaces = detectFacesInBitmap(bitmap,faceCategories)
+                    val hasFaces = detectFacesInBitmap(bitmap)
                     bitmap.recycle()
                     hasFaces
                 } else false
@@ -97,14 +105,16 @@ class FaceDetectorUseCase(private val context: Context, private val detectedImag
     private val NUM_CLUSTERS = 5
     private val MAX_ITERATIONS = 100
     private val clusters = mutableMapOf<Int, MutableList<FloatArray>>()
-    private val clusterResults = mutableMapOf<Int, MutableList<Bitmap>>()
 
-    private suspend fun detectFacesInBitmap(bitmap: Bitmap,faceCategories : (Set<Bitmap>)-> Unit): Boolean = suspendCoroutine { continuation ->
+    private suspend fun detectFacesInBitmap(bitmap: Bitmap): Boolean = suspendCoroutine { continuation ->
         val image = InputImage.fromBitmap(bitmap, 0)
         detector.process(image)
             .addOnSuccessListener { faces: List<Face> ->
-                if(faces.isNotEmpty())faceCategories.invoke(getFaceEmbedding(bitmap,faces))
-                continuation.resume(faces.isNotEmpty())
+                val hasFaces = faces.isNotEmpty()
+                if (hasFaces) {
+                    getFaceEmbedding(bitmap, faces)
+                }
+                continuation.resume(hasFaces)
             }
             .addOnFailureListener { e ->
                 Log.e("ImageRepository", "Face detection failed", e)
@@ -112,7 +122,18 @@ class FaceDetectorUseCase(private val context: Context, private val detectedImag
             }
     }
 
-    private fun getFaceEmbedding(bitmap: Bitmap, faces: List<Face>): Set<Bitmap> {
+    private suspend fun saveClustersToDatabase(clusters: Map<Int, List<Bitmap>>) {
+        clusters.forEach { (clusterId, faces) ->
+            if (!faceClusterDao.isClusterExists(clusterId)) {
+                    faces.forEach { faceBitmap ->
+                        Log.d("CluserID--",">>>>>${faceClusterDao.isClusterExists(clusterId)}")
+                        faceClusterDao.insertFace(  FaceClusterEntity(clusterId = clusterId, faceImage = Converters().fromBitmap(faceBitmap)))
+                    }
+            }
+        }
+    }
+
+    private fun getFaceEmbedding(bitmap: Bitmap, faces: List<Face>) {
         // Process new faces
         for(face in faces) {
             val boundingBox = face.boundingBox
@@ -129,14 +150,14 @@ class FaceDetectorUseCase(private val context: Context, private val detectedImag
                 faceData[embedding] = resizedFace
             }
         }
-
         processedImageCount++
         Log.d("FaceDetector", "Total unique faces: ${allFaceEmbeddings.size}")
-
-        return if (processedImageCount >= 3) {
-            performClustering().values.flatten().toSet()
-        } else {
-            emptySet()
+         if (processedImageCount >= 3) {
+            val clusters = performClustering()
+            // Save clusters to database
+             runBlocking {
+                 saveClustersToDatabase(clusters)
+             }
         }
     }
 
@@ -238,13 +259,13 @@ class FaceDetectorUseCase(private val context: Context, private val detectedImag
      * Processes all images that haven't been checked for faces yet (hadFace = false)
      * @return List of ImageModel for images where faces were found
      */
-    suspend fun syncLocalDBImages(faceCategories : (Set<Bitmap>)-> Unit): List<ImageModel> {
+    suspend fun syncLocalDBImages(): List<ImageModel> {
         val imagesWithFaces = mutableListOf<ImageModel>()
         val unprocessedImages = detectedImageDao.getUnprocessedImages()
         Log.d("Update", "Unprocessed images: $unprocessedImages")
         unprocessedImages.forEach { entity ->
             val uri = entity.uri.toUri()
-            val hasFaces = hasFaceAvailableInImage(uri,faceCategories)
+            val hasFaces = hasFaceAvailableInImage(uri)
             // If faces were found, add to the result list
             // Update the database with the new face detection result
             detectedImageDao.insertDetectedImage(entity.copy(hadFace = hasFaces))

@@ -64,6 +64,7 @@ import androidx.compose.ui.draw.clip
 @Composable
 fun ListScreen() {
     val context = LocalContext.current
+    val db = AppDatabase.getInstance(context)
     val permissionState = rememberPermissionState(
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             Manifest.permission.READ_MEDIA_IMAGES
@@ -74,13 +75,21 @@ fun ListScreen() {
     val viewModel: ImageViewModel = viewModel(
         factory = ImageViewModelFactory(
             GetImagesWithFacesUseCase(
-                ImageRepositoryImpl(ImageFetchFromGallery(context), FaceDetectorUseCase(context,AppDatabase.getInstance(context).detectedImageDao()))
-            )
+                ImageRepositoryImpl(
+                    ImageFetchFromGallery(context),
+                    FaceDetectorUseCase(
+                        context,
+                        db.detectedImageDao(),
+                        db.faceClusterDao()
+                    )
+                )
+            ),
+            db.faceClusterDao()
         )
     )
     when (permissionState.status) {
         is PermissionStatus.Granted -> {
-            LaunchedEffect(Unit) {viewModel.loadImages() }
+            LaunchedEffect(Unit) {viewModel.fetchData() }
             // Permission is granted, show the image grid
             Scaffold(topBar = {
                 TopAppBar(title = {Text("Faces Images")}, // Or your desired title
@@ -125,11 +134,9 @@ fun ListScreen() {
 private fun ImageGridContent(modifier: Modifier = Modifier, viewModel: ImageViewModel) {
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val faceCategory by viewModel.faceCategoris.collectAsStateWithLifecycle()
 
     Column(modifier = modifier.fillMaxSize()) {
-        // Horizontal scrollable list
-       if(faceCategory.isNotEmpty())
+        // Horizontal scrollable list of face clusters
         LazyRow(
             modifier = Modifier
                 .fillMaxWidth()
@@ -138,10 +145,13 @@ private fun ImageGridContent(modifier: Modifier = Modifier, viewModel: ImageView
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             contentPadding = PaddingValues(horizontal = 16.dp)
         ) {
-            items(faceCategory.toList()) { image ->
+            items(uiState.faceClusters) { faceCluster ->
                 AsyncImage(
-                    model = image,
-                    contentDescription = null,
+                    model = ImageRequest.Builder(context)
+                        .data(faceCluster.faceImage)
+                        .crossfade(true)
+                        .build(),
+                    contentDescription = "Face cluster ${faceCluster.clusterId}",
                     modifier = Modifier
                         .size(120.dp)
                         .clip(CircleShape),
@@ -151,7 +161,7 @@ private fun ImageGridContent(modifier: Modifier = Modifier, viewModel: ImageView
         }
 
         // Existing grid content
-        Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
+        Box(modifier = Modifier.weight(1f)) {
             if (uiState.isLoading) {
                 CircularProgressIndicator(
                     modifier = Modifier.align(Alignment.Center)

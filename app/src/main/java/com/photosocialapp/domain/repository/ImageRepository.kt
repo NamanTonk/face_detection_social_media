@@ -5,7 +5,7 @@ import com.photosocialapp.domain.model.ImageModel
 import kotlinx.coroutines.flow.Flow
 
 interface ImageRepository {
-    fun getImagesWithFaces(faceCategories: (Set<Bitmap>) -> Unit): Flow<List<ImageModel>>
+    fun getImagesWithFaces(): Flow<List<ImageModel>>
 
     /**
      * Syncs images by checking for faces in images where hadFace is false.

@@ -12,7 +12,7 @@ class GetImagesWithFacesUseCase(
      * Retrieves a [Flow] of [List] of [ImageModel] objects that are known to have faces.
      * This typically fetches images already processed and marked as having faces from the repository.
      */
-    operator fun invoke(faceCategory: (Set<Bitmap>) -> Unit): Flow<List<ImageModel>> = repository.getImagesWithFaces( faceCategory)
+    operator fun invoke(): Flow<List<ImageModel>> = repository.getImagesWithFaces()
 
     /**
      * Triggers a synchronization process for local images to detect faces.
