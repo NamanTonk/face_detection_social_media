@@ -1,7 +1,6 @@
 package com.photosocialapp.ui.compose_ui
 
 import android.Manifest
-import android.content.res.AssetManager
 import android.os.Build
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -15,7 +14,6 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
 import androidx.compose.foundation.lazy.staggeredgrid.itemsIndexed
-import androidx.compose.material.icons.Icons
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -33,10 +31,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
@@ -58,6 +54,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.lazy.items
 import androidx.compose.ui.draw.clip
+import com.photosocialapp.domain.usecase.FaceEmbaddingGenrator
 
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalPermissionsApi::class)
@@ -78,9 +75,9 @@ fun ListScreen() {
                 ImageRepositoryImpl(
                     ImageFetchFromGallery(context),
                     FaceDetectorUseCase(
-                        context,
+                        context.contentResolver,
                         db.detectedImageDao(),
-                        db.faceClusterDao()
+                        faceEmbeddingGenerator = FaceEmbaddingGenrator(db.faceClusterDao(),context.assets)
                     )
                 )
             ),
@@ -161,7 +158,7 @@ private fun ImageGridContent(modifier: Modifier = Modifier, viewModel: ImageView
         }
 
         // Existing grid content
-        Box(modifier = Modifier.weight(1f)) {
+        Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
             if (uiState.isLoading) {
                 CircularProgressIndicator(
                     modifier = Modifier.align(Alignment.Center)

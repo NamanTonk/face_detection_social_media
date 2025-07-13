@@ -1,5 +1,6 @@
 [versions]
 agp = "8.11.0"
+commonsMath3 = "3.6.1"
 faceDetectionVersion = "16.1.7"
 kotlin = "2.0.21"
 coreKtx = "1.16.0"
@@ -14,6 +15,7 @@ lifecycleViewmodelCompose = "2.9.1"
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 androidx-lifecycle-viewmodel-compose = { module = "androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "lifecycleViewmodelCompose" }
+commons-math3 = { module = "org.apache.commons:commons-math3", version.ref = "commonsMath3" }
 face-detection-v1615 = { module = "com.google.mlkit:face-detection", version.ref = "faceDetectionVersion" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }

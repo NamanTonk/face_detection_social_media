@@ -66,6 +66,7 @@ dependencies {
 
     // TensorFlow Lite
     implementation("org.tensorflow:tensorflow-lite:2.17.0")
+    implementation(libs.commons.math3)
 
     // Permissions
     implementation("com.google.accompanist:accompanist-permissions:0.32.0")
