@@ -54,7 +54,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.lazy.items
 import androidx.compose.ui.draw.clip
-import com.photosocialapp.domain.usecase.FaceEmbaddingGenrator
+import com.photosocialapp.domain.usecase.FaceEmbeddingGenerator
 
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalPermissionsApi::class)
@@ -77,7 +77,7 @@ fun ListScreen() {
                     FaceDetectorUseCase(
                         context.contentResolver,
                         db.detectedImageDao(),
-                        faceEmbeddingGenerator = FaceEmbaddingGenrator(db.faceClusterDao(),context.assets)
+                        faceEmbeddingGenerator = FaceEmbeddingGenerator(db.faceClusterDao(),context.assets)
                     )
                 )
             ),

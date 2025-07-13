@@ -19,7 +19,7 @@ import com.google.mlkit.vision.face.Face
 class FaceDetectorUseCase(
     private val contentResolver: ContentResolver,
     private val detectedImageDao: DetectedImageDao,
-    private val faceEmbeddingGenerator : FaceEmbaddingGenrator
+    private val faceEmbeddingGenerator : FaceEmbeddingGenerator
 ) {
     // Initialize ML Kit face detector with fast performance mode
 
