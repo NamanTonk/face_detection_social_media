@@ -76,29 +76,44 @@ class FaceEmbeddingGenerator(
     operator fun invoke(bitmap: Bitmap, faces: List<Face>) {
         // Process each face found in the image
         for (face in faces) {
-            // Step 1: Crop the face from the larger image using the bounding box from ML Kit.
-            val boundingBox = face.boundingBox
-            val croppedFace = Bitmap.createBitmap(
-                bitmap,
-                boundingBox.left,
-                boundingBox.top,
-                boundingBox.width(),
-                boundingBox.height()
-            )
+            try {
+                // Step 1: Get the bounding box and clamp it to bitmap dimensions
+                val boundingBox = face.boundingBox
+                val left = boundingBox.left.coerceIn(0, bitmap.width - 1)
+                val top = boundingBox.top.coerceIn(0, bitmap.height - 1)
+                val width = boundingBox.width().coerceAtMost(bitmap.width - left)
+                val height = boundingBox.height().coerceAtMost(bitmap.height - top)
 
-            // Step 2: Resize the cropped face to the required input size of the model (160x160).
-            val resizedFace = croppedFace.scale(INPUT_IMAGE_SIZE, INPUT_IMAGE_SIZE)
+                // Skip faces that are too small after clamping
+                if (width <= 0 || height <= 0) {
+                    continue
+                }
 
-            // Step 3: Convert the resized bitmap into a ByteBuffer and generate the embedding.
-            val inputBuffer = bitmapToByteBuffer(resizedFace)
-            val outputBuffer = Array(1) { FloatArray(EMBEDDING_SIZE) }
-            interpreter.run(inputBuffer, outputBuffer)
-            val embedding = outputBuffer[0]
+                val croppedFace = Bitmap.createBitmap(
+                    bitmap,
+                    left,
+                    top,
+                    width,
+                    height
+                )
 
-            // Step 4: Check if this face is genuinely new or a duplicate of one we've already seen.
-            if (isNewFace(embedding)) {
-                allFaceEmbeddings.add(embedding)
-                faceData[embedding] = resizedFace
+                // Step 2: Resize the cropped face to the required input size of the model (160x160).
+                val resizedFace = croppedFace.scale(INPUT_IMAGE_SIZE, INPUT_IMAGE_SIZE)
+
+                // Step 3: Convert the resized bitmap into a ByteBuffer and generate the embedding.
+                val inputBuffer = bitmapToByteBuffer(resizedFace)
+                val outputBuffer = Array(1) { FloatArray(EMBEDDING_SIZE) }
+                interpreter.run(inputBuffer, outputBuffer)
+                val embedding = outputBuffer[0]
+
+                // Step 4: Check if this face is genuinely new or a duplicate of one we've already seen.
+                if (isNewFace(embedding)) {
+                    allFaceEmbeddings.add(embedding)
+                    faceData[embedding] = resizedFace
+                }
+            } catch (e: Exception) {
+                Log.e("FaceEmbeddingGenerator", "Error processing face: ${e.message}")
+                continue // Skip this face and continue with the next one
             }
         }
 
