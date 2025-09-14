@@ -5,7 +5,7 @@ import android.provider.MediaStore
 
 class ImageFetchFromGallery(private val context: Context) {
     /**
-     * Queries the MediaStore for images sorted by date added
+     * Queries the MediaStore for the latest 50 images sorted by date added
      */
     operator fun invoke() = context.contentResolver.query(
         MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
@@ -15,6 +15,6 @@ class ImageFetchFromGallery(private val context: Context) {
         ),
         null,
         null,
-        "${MediaStore.Images.Media.DATE_ADDED} DESC"
+        "${MediaStore.Images.Media.DATE_ADDED} DESC LIMIT 50"
     )
 }
